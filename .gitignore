@@ -1,0 +1,26 @@
+# Secrets — never commit. All sensitive values live in AWS SSM Parameter Store.
+*.env
+.env*
+secrets.json
+parameter.json
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.aws-sam/
+backend/package/
+backend/*.zip
+
+# Node / build
+node_modules/
+dist/
+
+# OS
+.DS_Store
+
+# ESP32 / PlatformIO
+esp32/.pio/
+esp32/secrets.h

@@ -1,0 +1,31 @@
+{
+  "totp_secret": "JBSWY3DPEHPK3PXP_REPLACE_WITH_REAL_BASE32_SECRET",
+  "guest": {
+    "wifi": {
+      "ssid": "YOUR_NETWORK_NAME",
+      "password": "YOUR_WIFI_PASSWORD",
+      "notes": "2.4GHz and 5GHz share the same name; either is fine."
+    },
+    "monitor": {
+      "model": "Dell U2723QE (example)",
+      "instructions": "The laptop dock cable is the single USB-C on the left. Plug it in and the monitor switches automatically. If it stays black, press the joystick on the back-right and pick 'USB-C'."
+    },
+    "desk": {
+      "model": "Vivo electric standing desk",
+      "instructions": "Use the up/down buttons on the controller under the desktop, right side. Presets 1 and 2 are sitting/standing heights."
+    },
+    "keyboard_mouse": {
+      "model": "Logitech MX Keys Mini + MX Master mouse",
+      "instructions": "Both are already paired to the dock. If they don't respond, press the Bluetooth channel button (1) on each, then flip the power switch off/on."
+    },
+    "sonos": {
+      "room": "Basement Office",
+      "instructions": "Open the Sonos app and join the household, or AirPlay/Spotify Connect to 'Basement Office'. No password needed on the local network."
+    },
+    "home_assistant": {
+      "url": "http://homeassistant.local:8123",
+      "login": "guest / GUEST_PASSWORD",
+      "instructions": "Open the URL on the WiFi above. The 'Basement Office' dashboard has the light toggles and scenes."
+    }
+  }
+}

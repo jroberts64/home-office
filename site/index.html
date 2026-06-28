@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Basement Office — Guest Guide</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div class="badge">🏠</div>
+      <h1>Basement Office</h1>
+      <p class="sub">Welcome! Here's how to use everything down here.</p>
+    </header>
+
+    <!-- PIN gate -->
+    <section id="gate" class="card gate">
+      <h2>Unlock the guide</h2>
+      <p>Enter the rotating 6-digit PIN shown on the desk gadget.</p>
+      <form id="pin-form" autocomplete="off">
+        <input id="pin" name="pin" inputmode="numeric" pattern="[0-9]*"
+               maxlength="6" placeholder="000000" aria-label="6-digit PIN" />
+        <button id="unlock-btn" type="submit">Unlock</button>
+      </form>
+      <p id="error" class="error" role="alert" hidden></p>
+    </section>
+
+    <!-- Filled in after a valid PIN -->
+    <section id="content" hidden></section>
+
+    <footer>
+      <p>The PIN changes every 30 seconds — just type whatever is showing right now.</p>
+    </footer>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
