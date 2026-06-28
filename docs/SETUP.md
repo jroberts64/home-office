@@ -39,33 +39,42 @@ aws ssm put-parameter \
 
 > `parameter.json` is gitignored. Delete it after uploading — SSM is the source of truth.
 
-## 2. Deploy the stack
+## 2. Deploy
+
+One script does everything: builds the Lambda zip (with `pyotp`), deploys the
+CloudFormation app stack (S3 + CloudFront + Lambda + HTTP API), generates
+`site/config.js` from the API endpoint, syncs the site, and invalidates the CDN.
 
 ```bash
-cd ../infra
-sam build
-sam deploy --guided     # accept defaults; stack name e.g. home-office
+aws sso login --sso-session personal-sso       # refresh credentials
+AWS_PROFILE=personal-sso ./deploy/deploy.sh
 ```
 
-Note the outputs: `SiteURL`, `SiteBucketName`, `ApiEndpoint`.
+Stack name defaults to `home-office-app`; the site bucket is
+`home-office-<accountid>`. The script prints `SiteURL` and `ApiEndpoint` at the end.
+It reads all ids from CloudFormation outputs — nothing is hard-coded, and you
+never edit `config.js` by hand (it's generated each deploy).
 
-## 3. Wire the frontend to the API and upload it
+### Continuous deploy (GitHub Actions, OIDC)
 
-Put the `ApiEndpoint` value into `site/config.js` (`API_BASE`), then upload:
+To deploy automatically on every push to `main` — no AWS secrets stored in GitHub:
 
 ```bash
-cd ../site
-# set API_BASE in config.js first
-aws s3 sync . "s3://<SiteBucketName>/" --delete
+# One-time: create the repo-scoped deploy role. The OIDC provider already exists
+# in the account (from bin-builder), so CreateOIDCProvider defaults to false.
+AWS_PROFILE=personal-sso ./deploy/bootstrap-oidc.sh
 ```
 
-CloudFront caches aggressively; after re-uploading you may want:
+Copy the printed `DeployRoleArn` into the repo variable **`AWS_DEPLOY_ROLE_ARN`**
+(GitHub → Settings → Secrets and variables → Actions → Variables). After that,
+`git push` to `main` deploys via [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml).
 
-```bash
-aws cloudfront create-invalidation --distribution-id <id> --paths "/*"
-```
+> **Pushing as the right account.** This repo lives under `jroberts64`. If your
+> `gh` active account is sometimes a work account, run `./deploy/setup-git-account.sh`
+> once — it pins push/commit identity to `jroberts64` for this repo only (local
+> `.git/config`, no global changes).
 
-## 4. Make the desk QR code
+## 3. Make the desk QR code
 
 The QR code should point at `SiteURL`. Quick way:
 

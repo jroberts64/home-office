@@ -37,18 +37,31 @@ The TOTP secret is shared between:
 |-------------|-------------------------------------------------------------------|
 | [`site/`](site/)    | Static, mobile-first frontend (HTML/CSS/JS). Public, no secrets.   |
 | [`backend/`](backend/) | Python Lambda: validates TOTP, returns the decrypted JSON.        |
-| [`infra/`](infra/)   | AWS SAM/CloudFormation template for the whole stack.              |
+| [`deploy/`](deploy/)  | CloudFormation templates + scripts (app stack, OIDC role, deploy).|
 | [`esp32/`](esp32/)   | ESP32 firmware that shows the live PIN (optional, for fun).        |
 | [`docs/`](docs/)    | Setup notes, including how to populate Parameter Store.            |
+
+This mirrors the `deploy/` + GitHub-OIDC convention used by the sibling
+`bin-builder` and `flight-track` projects: plain CloudFormation, no stored AWS
+secrets, and continuous deploy on push to `main`.
 
 ## Quick start
 
 See [docs/SETUP.md](docs/SETUP.md) for full deployment steps. In short:
 
 1. Generate a TOTP secret and write the single JSON parameter to SSM (see setup doc).
-2. `sam build && sam deploy --guided` from [`infra/`](infra/).
-3. Upload [`site/`](site/) to the S3 bucket the stack creates.
-4. Print the QR code (the deploy outputs the URL) and stick it on the desk.
+2. `AWS_PROFILE=personal-sso ./deploy/deploy.sh` — builds the Lambda, deploys the
+   stack (S3 + CloudFront + Lambda + API), generates `site/config.js`, syncs the
+   site, and invalidates the CDN.
+3. Print the QR code from the `SiteURL` output and stick it on the desk.
+
+## Continuous deployment
+
+Every push to `main` runs [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml),
+which assumes a repo-scoped IAM role via **GitHub OIDC** (no stored secrets) and
+runs the same `deploy/deploy.sh`. One-time setup: `./deploy/bootstrap-oidc.sh`,
+then set the repo variable `AWS_DEPLOY_ROLE_ARN` to its output. See
+[docs/SETUP.md](docs/SETUP.md).
 
 ## Security model
 

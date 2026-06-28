@@ -1,0 +1,262 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  home-office — TOTP-gated guest guide. A private S3 bucket served over HTTPS via
+  CloudFront (Origin Access Control), plus a Lambda behind an HTTP API that
+  validates a rotating PIN (TOTP) and returns guest details read from a single
+  encrypted SSM SecureString parameter. No secrets live in the repo or the site.
+
+  Plain CloudFormation (mirrors the bin-builder deploy/ pattern). The Lambda code
+  is uploaded to the deploy bucket as a zip (with pyotp bundled) by deploy.sh; its
+  S3 key is passed in as LambdaS3Key so each deploy points at fresh code.
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Globally-unique S3 bucket name for the static site (e.g. home-office-<accountid>).
+  ParameterName:
+    Type: String
+    Default: /home-office/config
+    Description: Name of the SecureString SSM parameter holding the config JSON.
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket holding the Lambda deployment zip (the deploy bucket).
+  LambdaS3Key:
+    Type: String
+    Description: S3 key of the Lambda deployment zip (changes each deploy to force update).
+  DomainName:
+    Type: String
+    Default: ''
+    Description: Optional custom domain. Leave blank to serve on *.cloudfront.net only.
+  HostedZoneId:
+    Type: String
+    Default: ''
+    Description: Route53 hosted zone id for DomainName (required if DomainName set).
+
+Conditions:
+  HasDomain: !Not [!Equals [!Ref DomainName, '']]
+
+Resources:
+
+  # ---- Static site hosting (private S3 + CloudFront via OAC) ---------------
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: HasDomain
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${BucketName}-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub 'home-office guest guide (${BucketName})'
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        HttpVersion: http2and3
+        Aliases: !If [HasDomain, [!Ref DomainName], !Ref 'AWS::NoValue']
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          # AWS managed "CachingOptimized" policy.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        # Single-page site: serve index.html for missing keys.
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+        ViewerCertificate: !If
+          - HasDomain
+          - AcmCertificateArn: !Ref Certificate
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+
+  DnsRecords:
+    Type: AWS::Route53::RecordSet
+    Condition: HasDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt Distribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # fixed CloudFront alias zone id
+        EvaluateTargetHealth: false
+
+  DnsRecordsV6:
+    Type: AWS::Route53::RecordSet
+    Condition: HasDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: AAAA
+      AliasTarget:
+        DNSName: !GetAtt Distribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+        EvaluateTargetHealth: false
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${SiteBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution.Id}'
+
+  # ---- TOTP-gated API ------------------------------------------------------
+  UnlockFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: read-config-parameter
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Read only this one parameter. SecureString decrypt with the
+              # AWS-managed SSM key is permitted by the SSM service.
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterName}'
+
+  UnlockFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: home-office-unlock
+      Runtime: python3.12
+      Handler: app.handler
+      Timeout: 10
+      MemorySize: 128
+      Role: !GetAtt UnlockFunctionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaS3Key
+      Environment:
+        Variables:
+          PARAMETER_NAME: !Ref ParameterName
+
+  UnlockLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/home-office-unlock
+      RetentionInDays: 14
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: home-office-api
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - POST
+          - OPTIONS
+        AllowHeaders:
+          - content-type
+
+  HttpApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt UnlockFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  HttpApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'POST /unlock'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: '$default'
+      AutoDeploy: true
+
+  UnlockPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UnlockFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/unlock'
+
+Outputs:
+  BucketName:
+    Description: S3 bucket to sync the static site into.
+    Value: !Ref SiteBucket
+  DistributionId:
+    Description: CloudFront distribution id (for cache invalidation).
+    Value: !Ref Distribution
+  SiteURL:
+    Description: Default CloudFront HTTPS URL (put this in the desk QR code).
+    Value: !Sub 'https://${Distribution.DomainName}'
+  CustomURL:
+    Condition: HasDomain
+    Description: Custom-domain HTTPS URL.
+    Value: !Sub 'https://${DomainName}'
+  ApiEndpoint:
+    Description: API base URL — set as API_BASE in site/config.js.
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'

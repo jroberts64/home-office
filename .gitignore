@@ -13,6 +13,7 @@ venv/
 .aws-sam/
 backend/package/
 backend/*.zip
+backend/function.zip
 
 # Node / build
 node_modules/
