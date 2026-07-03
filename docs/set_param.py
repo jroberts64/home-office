@@ -13,9 +13,11 @@ Examples:
     python3 set_param.py guest.wifi.password "hunter2"
     python3 set_param.py guest.home_assistant.url http://homeassistant.local:8123
 
-Auth: inherits your environment like the AWS CLI. Set AWS_PROFILE (e.g.
-personal-sso, after `aws sso login`) and optionally AWS_REGION. Override the
-parameter name with PARAMETER_NAME if needed.
+Auth: inherits your environment like the AWS CLI (AWS_PROFILE/AWS_REGION come
+from .env by default — see docs/_env.py). If the SSO token has expired, the
+script runs `aws sso login` for you and retries once — no need to log in first.
+Override the SSO session name with SSO_SESSION (default: personal-sso) and the
+parameter name with PARAMETER_NAME.
 """
 
 import json
@@ -32,13 +34,60 @@ load_dotenv()
 PARAMETER_NAME = os.environ.get("PARAMETER_NAME", "/home-office/config")
 
 
-def _aws(*args):
-    """Run an aws CLI command, returning (returncode, stdout, stderr)."""
+# Substrings the AWS CLI emits when the SSO/session token is expired or missing.
+_EXPIRED_TOKEN_MARKERS = (
+    "Token has expired",
+    "session associated with this profile has expired",
+    "Error loading SSO Token",
+    "sso session associated with this profile has expired",
+    "The security token included in the request is expired",
+    "ExpiredToken",
+    "ForbiddenException",  # SSO token refresh failed
+)
+
+
+def _looks_expired(stderr):
+    low = stderr.lower()
+    return any(m.lower() in low for m in _EXPIRED_TOKEN_MARKERS)
+
+
+def _sso_login():
+    """Refresh credentials via `aws sso login`. Returns True on success.
+
+    Prefers the SSO session name (SSO_SESSION env or the personal-sso default);
+    falls back to the profile. Opens a browser for re-auth.
+    """
+    session = os.environ.get("SSO_SESSION", "personal-sso")
+    profile = os.environ.get("AWS_PROFILE")
+    attempts = []
+    if session:
+        attempts.append(["aws", "sso", "login", "--sso-session", session])
+    if profile:
+        attempts.append(["aws", "sso", "login", "--profile", profile])
+    attempts.append(["aws", "sso", "login"])  # last resort: default config
+
+    for cmd in attempts:
+        print(f"==> Credentials expired; running: {' '.join(cmd)}", file=sys.stderr)
+        # No capture — the CLI needs the terminal/browser for the login flow.
+        if subprocess.run(cmd).returncode == 0:
+            return True
+    return False
+
+
+def _aws(*args, _allow_refresh=True):
+    """Run an aws CLI command, returning (returncode, stdout, stderr).
+
+    If the call fails because the SSO token has expired, transparently run
+    `aws sso login` once and retry.
+    """
     cmd = ["aws"] + list(args)
     if os.environ.get("AWS_REGION"):
         cmd += ["--region", os.environ["AWS_REGION"]]
     # AWS_PROFILE is honored by the CLI directly; no need to pass --profile.
     proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0 and _allow_refresh and _looks_expired(proc.stderr):
+        if _sso_login():
+            return _aws(*args, _allow_refresh=False)  # retry once, no further refresh
     return proc.returncode, proc.stdout, proc.stderr
 
 
