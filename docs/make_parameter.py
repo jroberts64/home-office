@@ -10,6 +10,12 @@ import json
 import subprocess
 import sys
 
+from _env import load_dotenv
+
+# Pull AWS_PROFILE / AWS_REGION from the repo-local .env for local runs
+# (no-op in CI, and never overrides an already-set variable).
+load_dotenv()
+
 try:
     import pyotp
 except ImportError:

@@ -18,6 +18,24 @@
 # Stack outputs are read from CloudFormation, so nothing is hard-coded.
 set -euo pipefail
 
+# Load repo-local .env (gitignored) for local runs — e.g. AWS_PROFILE. Values
+# already set in the environment take precedence, so CI (no .env) and explicit
+# overrides (FOO=bar ./deploy.sh) are unaffected.
+load_dotenv() {
+  local file="$1" line key val
+  [[ -f "$file" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"                       # strip comments
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+    key="${line%%=*}"; key="${key//[[:space:]]/}"
+    val="${line#*=}"; val="${val#"${val%%[![:space:]]*}"}"  # ltrim
+    [[ -z "$key" ]] && continue
+    [[ -n "${!key:-}" ]] && continue          # don't clobber existing env
+    export "$key=$val"
+  done < "$file"
+}
+load_dotenv "$(dirname "$0")/../.env"
+
 REGION="${AWS_REGION:-us-east-1}"
 STACK="${STACK:-home-office-app}"
 PARAMETER_NAME="${PARAMETER_NAME:-/home-office/config}"

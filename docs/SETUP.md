@@ -5,9 +5,21 @@ ever committed to this public repo.
 
 ## Prerequisites
 
-- AWS CLI configured (`aws configure`)
-- AWS SAM CLI (`brew install aws-sam-cli`)
-- Python 3.12 (for the secret-generation helper)
+- AWS CLI configured (SSO: `aws sso login --sso-session personal-sso`)
+- Python 3.12 (for the helper scripts) and `jq` if you edit JSON by hand
+- `zip` on PATH (used by `deploy.sh` to package the Lambda)
+
+## 0. Local environment (.env)
+
+Copy the template so the scripts know which AWS profile to use locally:
+
+```bash
+cp .env.example .env    # sets AWS_PROFILE=personal-sso, AWS_REGION=us-east-1
+```
+
+`.env` is gitignored. It's loaded automatically by `deploy/*.sh` and the Python
+helpers in `docs/`, and it never overrides a variable you set explicitly on the
+command line. In CI there is no `.env` — the OIDC role provides credentials.
 
 ## 1. Generate the TOTP secret and write the parameter
 

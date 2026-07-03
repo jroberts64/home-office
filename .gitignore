@@ -1,6 +1,7 @@
 # Secrets — never commit. All sensitive values live in AWS SSM Parameter Store.
 *.env
 .env*
+!.env.example
 secrets.json
 parameter.json
 *.pem

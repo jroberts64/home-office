@@ -11,6 +11,23 @@
 # (Settings → Secrets and variables → Actions → Variables) for the workflow.
 set -euo pipefail
 
+# Load repo-local .env (gitignored) for local runs — e.g. AWS_PROFILE. Values
+# already set in the environment take precedence.
+load_dotenv() {
+  local file="$1" line key val
+  [[ -f "$file" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+    key="${line%%=*}"; key="${key//[[:space:]]/}"
+    val="${line#*=}"; val="${val#"${val%%[![:space:]]*}"}"
+    [[ -z "$key" ]] && continue
+    [[ -n "${!key:-}" ]] && continue
+    export "$key=$val"
+  done < "$file"
+}
+load_dotenv "$(dirname "$0")/../.env"
+
 REGION="${AWS_REGION:-us-east-1}"
 STACK="${STACK:-home-office-gha-oidc}"
 GITHUB_ORG="${GITHUB_ORG:-jroberts64}"
