@@ -208,6 +208,7 @@ Resources:
         AllowOrigins:
           - '*'
         AllowMethods:
+          - GET
           - POST
           - OPTIONS
         AllowHeaders:
@@ -221,11 +222,21 @@ Resources:
       IntegrationUri: !GetAtt UnlockFunction.Arn
       PayloadFormatVersion: '2.0'
 
+  # PIN-gated WiFi. This route is tightly throttled (see HttpApiStage) so an
+  # attacker can't brute-force the rotating PIN by hammering it.
   HttpApiRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: 'POST /unlock'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+
+  # Public guide data (everything except WiFi). No PIN required.
+  HttpApiGuideRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'GET /guide'
       Target: !Sub 'integrations/${HttpApiIntegration}'
 
   HttpApiStage:
@@ -234,6 +245,17 @@ Resources:
       ApiId: !Ref HttpApi
       StageName: '$default'
       AutoDeploy: true
+      # Coarse global cap for the whole API.
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 20
+        ThrottlingBurstLimit: 10
+      # Tight cap specifically on PIN attempts: ~2 requests/sec sustained,
+      # 5 burst. Enough for a real guest retrying a mistyped code; far too slow
+      # to brute-force a 6-digit code that also rotates every 30 seconds.
+      RouteSettings:
+        'POST /unlock':
+          ThrottlingRateLimit: 2
+          ThrottlingBurstLimit: 5
 
   UnlockPermission:
     Type: AWS::Lambda::Permission
@@ -241,7 +263,8 @@ Resources:
       FunctionName: !Ref UnlockFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/unlock'
+      # Covers both routes (POST /unlock and GET /guide) on this API.
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*'
 
 Outputs:
   BucketName:

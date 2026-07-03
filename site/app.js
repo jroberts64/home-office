@@ -2,63 +2,26 @@
   "use strict";
 
   const API_BASE = (window.HOME_OFFICE_CONFIG || {}).API_BASE || "";
-  const form = document.getElementById("pin-form");
-  const pinInput = document.getElementById("pin");
-  const btn = document.getElementById("unlock-btn");
-  const errorEl = document.getElementById("error");
-  const gate = document.getElementById("gate");
   const content = document.getElementById("content");
 
-  function showError(msg) {
-    errorEl.textContent = msg;
-    errorEl.hidden = false;
-  }
-  function clearError() {
-    errorEl.hidden = true;
-    errorEl.textContent = "";
-  }
-
-  form.addEventListener("submit", async function (e) {
-    e.preventDefault();
-    clearError();
-    const pin = pinInput.value.trim();
-    if (!/^\d{6}$/.test(pin)) {
-      showError("Enter the 6-digit PIN from the desk.");
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = "Checking…";
-    let data;
+  // Load the public guide (everything except WiFi) on page load — no PIN.
+  // WiFi is fetched later, only after a valid PIN, from inside its own tile.
+  async function loadGuide() {
+    content.hidden = false;
+    content.innerHTML = "";
+    content.appendChild(el("p", { class: "grid-hint" }, ["Loading…"]));
     try {
-      const res = await fetch(API_BASE + "/unlock", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin }),
-      });
-      data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        showError(data.error || "Something went wrong. Try again.");
-        return;
-      }
-    } catch (err) {
-      // Only genuine fetch failures reach here (DNS, offline, CORS).
-      showError("Couldn't reach the server. Are you on the WiFi?");
-      return;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Unlock";
-    }
-
-    // Render outside the network try so a display bug isn't mislabeled as a
-    // connection problem.
-    try {
+      const res = await fetch(API_BASE + "/guide", { method: "GET" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "bad response");
       render(data.guest || {});
     } catch (err) {
-      showError("Unlocked, but something went wrong showing the guide. Tell Jack.");
-      if (window.console) console.error("render failed:", err);
+      content.innerHTML = "";
+      content.appendChild(el("p", { class: "grid-hint error" },
+        ["Couldn't load the guide. Are you on the WiFi? Try refreshing."]));
+      if (window.console) console.error("guide load failed:", err);
     }
-  });
+  }
 
   // --- Rendering -----------------------------------------------------------
 
@@ -122,7 +85,8 @@
   const SECTIONS = [
     {
       key: "wifi", icon: "📶", label: "WiFi", tint: "t-wifi",
-      title: "Join the WiFi", body: wifiBody,
+      // Gated: the tile opens a PIN prompt; a valid PIN swaps in wifiBody().
+      title: "Join the WiFi", body: function () { return wifiLockedBody(); },
     },
     {
       key: "monitor", icon: "🖥️", label: "Monitor", tint: "t-monitor",
@@ -211,6 +175,67 @@
     return nodes;
   }
 
+  // WiFi is the one gated section: it has no public data, so its tile opens a
+  // PIN prompt. A correct PIN fetches /unlock and swaps in the WiFi details.
+  function wifiLockedBody() {
+    const nodes = [];
+    nodes.push(el("p", { class: "hint subtle" },
+      ["WiFi is protected. Enter the rotating 6-digit PIN from the desk gadget."]));
+
+    const input = el("input", {
+      id: "wifi-pin", inputmode: "numeric", pattern: "[0-9]*",
+      maxlength: "6", placeholder: "000000", "aria-label": "6-digit PIN",
+      autocomplete: "off",
+    }, []);
+    const submit = el("button", { type: "submit", class: "primary wide" }, ["Unlock WiFi"]);
+    const errP = el("p", { class: "error", role: "alert", hidden: "hidden" }, []);
+
+    const formEl = el("form", { class: "pin-form-modal", autocomplete: "off" },
+      [input, submit, errP]);
+
+    formEl.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      errP.hidden = true;
+      const pin = input.value.trim();
+      if (!/^\d{6}$/.test(pin)) {
+        errP.textContent = "Enter the 6-digit PIN from the desk.";
+        errP.hidden = false;
+        return;
+      }
+      submit.disabled = true;
+      submit.textContent = "Checking…";
+      try {
+        const res = await fetch(API_BASE + "/unlock", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          errP.textContent = "Too many tries. Wait a few seconds and try again.";
+          errP.hidden = false;
+          return;
+        }
+        if (!res.ok) {
+          errP.textContent = data.error || "Something went wrong. Try again.";
+          errP.hidden = false;
+          return;
+        }
+        // Unlocked — replace the modal body with the WiFi details.
+        setModalBody(wifiBody(data.wifi || {}));
+      } catch (err) {
+        errP.textContent = "Couldn't reach the server. Are you on the WiFi?";
+        errP.hidden = false;
+      } finally {
+        submit.disabled = false;
+        submit.textContent = "Unlock WiFi";
+      }
+    });
+
+    nodes.push(formEl);
+    return nodes;
+  }
+
   // --- Modal ---------------------------------------------------------------
   const dialog = document.getElementById("modal");
   const modalTitle = document.getElementById("modal-title");
@@ -222,14 +247,21 @@
     if (e.target === dialog) dialog.close();
   });
 
+  function setModalBody(nodes) {
+    modalBody.innerHTML = "";
+    nodes.forEach(function (n) { if (n) modalBody.appendChild(n); });
+  }
+
   function openModal(section, data) {
     modalTitle.textContent = section.title || section.label;
-    const sub = section.sub ? section.sub(data) : "";
+    const sub = section.sub ? section.sub(data || {}) : "";
     modalSub.textContent = sub || "";
     modalSub.hidden = !sub;
-    modalBody.innerHTML = "";
-    section.body(data).forEach(function (n) { if (n) modalBody.appendChild(n); });
+    setModalBody(section.body(data));
     dialog.showModal();
+    // Focus the PIN field when WiFi opens.
+    const pin = modalBody.querySelector("#wifi-pin");
+    if (pin) pin.focus();
   }
 
   // --- Home grid of tiles --------------------------------------------------
@@ -239,12 +271,19 @@
     const grid = el("div", { class: "grid" }, []);
 
     SECTIONS.forEach(function (section) {
+      // WiFi always shows (it's gated, not in the public payload). Other tiles
+      // show only if the public guide included their data.
       const data = g[section.key];
-      if (!data) return; // only show tiles we have content for
+      if (section.key !== "wifi" && !data) return;
+
+      const iconNodes = [el("span", { class: "tile-icon", "aria-hidden": "true" }, [section.icon])];
+      if (section.key === "wifi") {
+        iconNodes.push(el("span", { class: "tile-lock", "aria-hidden": "true" }, ["🔒"]));
+      }
       const tile = el("button", {
         type: "button", class: "tile " + section.tint, "aria-haspopup": "dialog",
       }, [
-        el("span", { class: "tile-icon", "aria-hidden": "true" }, [section.icon]),
+        el("span", { class: "tile-icon-wrap" }, iconNodes),
         el("span", { class: "tile-label" }, [section.label]),
       ]);
       tile.addEventListener("click", function () { openModal(section, data); });
@@ -253,7 +292,8 @@
 
     content.appendChild(grid);
     content.hidden = false;
-    gate.hidden = true;
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  loadGuide();
 })();

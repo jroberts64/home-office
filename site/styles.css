@@ -127,16 +127,38 @@ a { color: var(--accent); }
 .tile:focus-visible { outline: 3px solid var(--tile); outline-offset: 2px; }
 .tile:active { transform: translateY(0); }
 
+.tile-icon-wrap { position: relative; display: inline-flex; }
 .tile-icon {
   font-size: 44px; line-height: 1;
   filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35));
   white-space: nowrap;          /* keep multi-emoji icons (e.g. ⌨️🖱️) on one line */
+}
+/* Small lock badge on the gated (WiFi) tile. */
+.tile-lock {
+  position: absolute; right: -12px; bottom: -6px;
+  font-size: 18px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
 }
 .tile-label {
   font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
   text-align: center; line-height: 1.15;
   max-width: 100%;
 }
+
+/* In-modal PIN form (WiFi unlock). */
+.pin-form-modal {
+  display: flex; flex-direction: column; gap: 12px;
+  margin-top: 4px;
+}
+.pin-form-modal input {
+  font-size: 26px; letter-spacing: 8px; text-align: center;
+  padding: 12px 14px; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: var(--card-2); color: var(--text);
+  width: 100%; box-sizing: border-box;
+}
+.pin-form-modal input:focus { outline: 2px solid var(--accent); }
+.pin-form-modal .error { text-align: center; margin: 0; }
 
 /* Per-function accent hues (set --tile; the ::before and states use it). */
 .t-wifi    { --tile: #5b9dff; }

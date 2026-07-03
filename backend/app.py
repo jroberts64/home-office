@@ -87,12 +87,40 @@ def _response(status, body):
 
 
 def handler(event, context):
-    # Handle CORS preflight.
     method = (event.get("requestContext", {}).get("http", {}).get("method")
               or event.get("httpMethod"))
+    path = (event.get("requestContext", {}).get("http", {}).get("path")
+            or event.get("rawPath") or event.get("path") or "")
+
+    # CORS preflight for any route.
     if method == "OPTIONS":
         return _response(200, {"ok": True})
 
+    # Public: everything EXCEPT WiFi. No PIN required.
+    if method == "GET" and path.endswith("/guide"):
+        return _guide()
+
+    # Gated + rate-limited: WiFi only, requires a valid rotating PIN.
+    if method == "POST" and path.endswith("/unlock"):
+        return _unlock(event)
+
+    return _response(404, {"error": "Not found"})
+
+
+def _guide():
+    """Public guest info — the whole guide minus the sensitive WiFi block."""
+    try:
+        config = _load_config()
+    except Exception:  # noqa: BLE001 — never leak SSM internals to the client.
+        return _response(500, {"error": "Server misconfiguration. Tell Jack."})
+
+    guest = dict(config.get("guest", {}))
+    guest.pop("wifi", None)  # WiFi is gated behind /unlock; never in the public payload.
+    return _response(200, {"guest": guest})
+
+
+def _unlock(event):
+    """PIN-gated WiFi details. Rate-limited at the API Gateway layer."""
     try:
         body = json.loads(event.get("body") or "{}")
     except (TypeError, ValueError):
@@ -116,17 +144,12 @@ def handler(event, context):
     if not totp.verify(pin, valid_window=1):
         return _response(401, {"error": "That PIN isn't right (or just expired). Try the current one."})
 
-    # PIN is valid — return only the guest-facing details, never the TOTP secret.
-    guest = config.get("guest", {})
-
-    # Add a scannable WiFi-join QR so guests can connect without reading the
-    # password. (The password is still returned for the "copy password" button
-    # on laptops; the frontend never renders it as visible text.)
-    wifi = guest.get("wifi")
-    if isinstance(wifi, dict) and wifi.get("ssid"):
+    # PIN is valid — return ONLY the WiFi block (with a join QR), never the secret.
+    wifi = dict(config.get("guest", {}).get("wifi") or {})
+    if wifi.get("ssid"):
         qr = _wifi_qr_data_uri(wifi.get("ssid"), wifi.get("password"),
                                wifi.get("auth", "WPA"))
         if qr:
             wifi["qr"] = qr
 
-    return _response(200, {"guest": guest})
+    return _response(200, {"wifi": wifi})
