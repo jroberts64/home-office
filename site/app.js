@@ -86,8 +86,32 @@
     return el("section", { class: "card item" }, nodes);
   }
 
+  // Split a string into text + clickable-link nodes. Only http(s) URLs are
+  // linkified; everything is inserted as text/DOM nodes (never innerHTML), so
+  // there's no injection risk even though the source is our own SSM config.
+  function linkify(text) {
+    const parts = [];
+    const re = /(https?:\/\/[^\s<>"')]+)/g;
+    let last = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) parts.push(text.slice(last, m.index));
+      let url = m[0];
+      // Don't swallow a trailing sentence period into the URL.
+      let trailer = "";
+      while (url && ".,;:!?".includes(url[url.length - 1])) {
+        trailer = url[url.length - 1] + trailer;
+        url = url.slice(0, -1);
+      }
+      parts.push(el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, [url]));
+      if (trailer) parts.push(trailer);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parts.push(text.slice(last));
+    return parts;
+  }
+
   function instr(text) {
-    return text ? el("p", null, [text]) : "";
+    return text ? el("p", null, linkify(text)) : "";
   }
 
   // WiFi card: connect without seeing the password.
@@ -171,11 +195,15 @@
     }
     if (g.home_assistant) {
       const ha = g.home_assistant;
-      const kv = el("dl", { class: "kv" }, [
+      const rows = [
         el("dt", null, ["URL"]),
         el("dd", null, [ha.url ? el("a", { href: ha.url, target: "_blank", rel: "noopener" }, [ha.url]) : ""]),
-        el("dt", null, ["Login"]), el("dd", null, [el("code", null, [ha.login || ""])]),
-      ]);
+      ];
+      // Only show a Login row if one is configured (guest may use URL-only access).
+      if (ha.login) {
+        rows.push(el("dt", null, ["Login"]), el("dd", null, [el("code", null, [ha.login])]));
+      }
+      const kv = el("dl", { class: "kv" }, rows);
       frag.appendChild(card("💡", "Lights (Home Assistant)", null, [kv, instr(ha.instructions)]));
     }
 
