@@ -82,51 +82,169 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 .error { color: var(--error); margin-top: 12px; min-height: 1em; }
 
-/* Content cards */
-.item h3 {
-  margin: 0 0 4px;
-  display: flex; align-items: center; gap: 10px;
-  font-size: 18px;
+a { color: var(--accent); }
+
+/* ---- Tile grid (home) --------------------------------------------------- */
+.grid-hint {
+  text-align: center; color: var(--muted);
+  margin: 0 0 18px; font-size: 15px;
 }
-.item .model { color: var(--muted); font-size: 14px; margin: 0 0 10px; }
-.item p { margin: 6px 0; }
-.item .icon { font-size: 22px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+@media (min-width: 560px) {
+  .grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Each tile is a big square button: emoji + one/two-word label. */
+.tile {
+  /* reset the inherited primary-button look */
+  background: var(--card);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: var(--radius);
+  color: var(--text);
+  aspect-ratio: 1 / 1;
+  padding: 14px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  position: relative;
+  overflow: hidden;
+}
+/* A soft wash of the tile's accent, so each function reads as its own color. */
+.tile::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: radial-gradient(120% 90% at 50% 0%, var(--tile) 0%, transparent 62%);
+  opacity: 0.22;
+  pointer-events: none;
+}
+.tile:hover { transform: translateY(-2px); border-color: var(--tile); background: var(--card-2); }
+.tile:focus-visible { outline: 3px solid var(--tile); outline-offset: 2px; }
+.tile:active { transform: translateY(0); }
+
+.tile-icon {
+  font-size: 46px; line-height: 1;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35));
+}
+.tile-label {
+  font-size: 17px; font-weight: 700; letter-spacing: -0.01em;
+}
+
+/* Per-function accent hues (set --tile; the ::before and states use it). */
+.t-wifi    { --tile: #5b9dff; }
+.t-monitor { --tile: #29c2d6; }
+.t-desk    { --tile: #f0a531; }
+.t-kbd     { --tile: #7c5bff; }
+.t-sonos   { --tile: #3ecf8e; }
+.t-lights  { --tile: #ffcf4a; }
+
+/* ---- Modal (detail pop-up) ---------------------------------------------- */
+#modal {
+  border: 0; padding: 0;
+  background: transparent;
+  max-width: 460px; width: calc(100% - 32px);
+  color: var(--text);
+  margin: auto;                 /* center in the viewport */
+}
+#modal::backdrop {
+  background: rgba(8, 10, 14, 0.66);
+  backdrop-filter: blur(3px);
+}
+.modal-panel {
+  background: var(--card);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 20px;
+  padding: 26px 24px 24px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  position: relative;
+  max-height: 86vh; overflow-y: auto;
+}
+#modal h2 { margin: 0 40px 2px 0; font-size: 21px; letter-spacing: -0.02em; }
+.modal-sub { color: var(--muted); margin: 0 0 14px; font-size: 14px; }
+.modal-close {
+  position: absolute; top: 14px; right: 14px;
+  width: 34px; height: 34px; padding: 0;
+  display: grid; place-items: center;
+  font-size: 22px; line-height: 1;
+  background: var(--card-2);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px; color: var(--text);
+}
+.modal-close:hover { background: #2b3038; }
+
+@media (prefers-reduced-motion: no-preference) {
+  #modal[open] .modal-panel { animation: pop 0.16s ease-out; }
+  @keyframes pop { from { transform: scale(0.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+}
+
+/* ---- Modal content ------------------------------------------------------ */
+/* Numbered steps — the primary "how to" content. Big, easy to act on. */
+.steps {
+  margin: 4px 0 16px; padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.steps li {
+  position: relative;
+  padding: 10px 0 10px 40px;
+  font-size: 16px; line-height: 1.45;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.steps li:last-child { border-bottom: 0; }
+.steps li::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute; left: 0; top: 9px;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 700;
+  background: var(--accent); color: #fff;
+  border-radius: 50%;
+}
 
 .kv {
   display: grid; grid-template-columns: auto 1fr; gap: 6px 14px;
-  background: var(--card-2); border-radius: 10px;
-  padding: 12px 14px; margin: 10px 0;
+  background: var(--card-2); border-radius: 12px;
+  padding: 12px 14px; margin: 12px 0;
 }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; font-weight: 600; word-break: break-word; }
 .kv code { font-family: ui-monospace, monospace; }
 
-a { color: var(--accent); }
+/* Big, obvious action button inside modals (copy password, open dashboard). */
+.primary.wide {
+  display: block; width: 100%; text-align: center;
+  margin: 6px 0 2px; padding: 14px 18px;
+  font-size: 16px; font-weight: 700;
+  border-radius: 12px; color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-sizing: border-box;
+}
+a.primary.wide { text-decoration: none; }
+.primary.wide:hover { filter: brightness(1.06); }
 
-/* WiFi card */
+.docs-link {
+  display: inline-block; margin-top: 12px;
+  font-size: 14px; font-weight: 600;
+}
+
 .wifi-qr {
   display: block;
-  width: 180px; height: 180px;
-  margin: 12px auto;
+  width: 200px; height: 200px;
+  margin: 14px auto 6px;
   background: #fff;           /* white quiet-zone so cameras read it reliably */
   padding: 10px;
   border-radius: 12px;
 }
-.hint { text-align: center; color: var(--muted); margin: 10px 0 0; }
+.hint { text-align: center; color: var(--muted); margin: 8px 0 12px; }
 .hint.subtle { font-size: 13px; }
 
-.actions {
-  display: flex; align-items: center; justify-content: center;
-  gap: 16px; flex-wrap: wrap; margin: 14px 0 4px;
-}
-/* Smaller, muted button for the copy action (distinct from the primary unlock). */
-button.secondary {
-  font-size: 15px;
-  padding: 10px 18px;
-  background: var(--card-2);
-  border: 1px solid rgba(255,255,255,0.14);
-}
-/* A button that looks like a text link (the "Show password" fallback). */
+.reveal-row { text-align: center; margin-top: 6px; }
 button.linklike {
   background: none; border: 0; padding: 0;
   color: var(--accent); font-weight: 500; font-size: 14px;
@@ -141,4 +259,4 @@ button.linklike {
 /* Show as a block only when revealed; the [hidden] attribute must still win. */
 .pw:not([hidden]) { display: block; }
 
-footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 24px; }
+footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 32px; }

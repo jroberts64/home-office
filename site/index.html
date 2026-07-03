@@ -27,13 +27,23 @@
       <p id="error" class="error" role="alert" hidden></p>
     </section>
 
-    <!-- Filled in after a valid PIN -->
+    <!-- Grid of tiles, filled in after a valid PIN -->
     <section id="content" hidden></section>
 
     <footer>
       <p>The PIN changes every 30 seconds — just type whatever is showing right now.</p>
     </footer>
   </main>
+
+  <!-- Detail pop-up. Native <dialog> gives us focus trapping + Esc-to-close. -->
+  <dialog id="modal" aria-labelledby="modal-title">
+    <div class="modal-panel">
+      <button id="modal-close" type="button" class="modal-close" aria-label="Close">×</button>
+      <h2 id="modal-title"></h2>
+      <p id="modal-sub" class="modal-sub" hidden></p>
+      <div id="modal-body"></div>
+    </div>
+  </dialog>
 
   <script src="config.js"></script>
   <script src="app.js"></script>

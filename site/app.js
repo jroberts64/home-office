@@ -78,14 +78,6 @@
     return node;
   }
 
-  function card(icon, title, model, bodyNodes) {
-    const head = [el("span", { class: "icon" }, [icon]), title];
-    const nodes = [el("h3", null, head)];
-    if (model) nodes.push(el("p", { class: "model" }, [model]));
-    bodyNodes.forEach((n) => nodes.push(n));
-    return el("section", { class: "card item" }, nodes);
-  }
-
   // Split a string into text + clickable-link nodes. Only http(s) URLs are
   // linkified; everything is inserted as text/DOM nodes (never innerHTML), so
   // there's no injection risk even though the source is our own SSM config.
@@ -110,104 +102,156 @@
     return parts;
   }
 
-  function instr(text) {
-    return text ? el("p", null, linkify(text)) : "";
+  // A list of short numbered steps.
+  function steps(list) {
+    if (!Array.isArray(list) || !list.length) return "";
+    return el("ol", { class: "steps" },
+      list.map((s) => el("li", null, linkify(String(s)))));
   }
 
-  // WiFi card: connect without seeing the password.
-  //  - Phones: scan the QR (camera offers "Join network").
-  //  - Laptops: "Copy password" writes it to the clipboard without showing it.
-  //  - Optional "Show" reveals it as a last resort.
-  function wifiCard(w) {
+  // A "Full manual" link at the foot of a modal.
+  function docsLink(url) {
+    if (!url) return "";
+    return el("a", { class: "docs-link", href: url, target: "_blank", rel: "noopener noreferrer" },
+      ["Full manual ↗"]);
+  }
+
+  // --- Section registry ----------------------------------------------------
+  // Each entry: emoji, short tile label, tint class, modal title, and a body
+  // builder that returns the modal content nodes. `data` is guest[key].
+  const SECTIONS = [
+    {
+      key: "wifi", icon: "📶", label: "WiFi", tint: "t-wifi",
+      title: "Join the WiFi", body: wifiBody,
+    },
+    {
+      key: "monitor", icon: "🖥️", label: "Monitor", tint: "t-monitor",
+      title: "Dell Monitor", sub: function (d) { return d.model; },
+      body: function (d) { return [steps(d.steps), docsLink(d.docs_url)]; },
+    },
+    {
+      key: "desk", icon: "🪑", label: "Desk", tint: "t-desk",
+      title: "Standing Desk", sub: function (d) { return d.model; },
+      body: function (d) { return [steps(d.steps), docsLink(d.docs_url)]; },
+    },
+    {
+      key: "keyboard_mouse", icon: "⌨️", label: "Keyboard", tint: "t-kbd",
+      title: "Keyboard & Mouse", sub: function (d) { return d.model; },
+      body: function (d) { return [steps(d.steps), docsLink(d.docs_url)]; },
+    },
+    {
+      key: "sonos", icon: "🔊", label: "Speakers", tint: "t-sonos",
+      title: "Sonos Speakers",
+      sub: function (d) { return d.room ? "Room: " + d.room : ""; },
+      body: function (d) { return [steps(d.steps), docsLink(d.docs_url)]; },
+    },
+    {
+      key: "home_assistant", icon: "💡", label: "Lights", tint: "t-lights",
+      title: "Basement Lights", body: haBody,
+    },
+  ];
+
+  // WiFi modal body: QR (phones) + copy-password (laptops) + steps.
+  function wifiBody(w) {
     const nodes = [];
-
-    const kv = el("dl", { class: "kv" }, [
+    nodes.push(el("dl", { class: "kv" }, [
       el("dt", null, ["Network"]),
-      el("dd", null, [el("code", null, [w.ssid || ""])]),
-    ]);
-    nodes.push(kv);
+      el("dd", null, [el("code", null, [w.ssid])]),
+    ]));
 
-    // QR for phones.
     if (w.qr) {
-      const img = el("img", {
-        class: "wifi-qr", src: w.qr, alt: "WiFi join QR code", width: "180", height: "180",
-      }, []);
-      nodes.push(el("p", { class: "hint" }, ["📷 Scan with your phone camera to join"]));
-      nodes.push(img);
+      nodes.push(el("img", {
+        class: "wifi-qr", src: w.qr, alt: "WiFi join QR code", width: "200", height: "200",
+      }, []));
+      nodes.push(el("p", { class: "hint" }, ["Scan with your phone camera to join"]));
     }
 
-    // Copy button + optional reveal for laptops. Only if there is a password.
     if (w.password) {
-      const actions = el("div", { class: "actions" }, []);
+      const shownPw = el("code", { class: "pw", hidden: "hidden" }, [w.password]);
+      const showLink = el("button", { type: "button", class: "linklike" }, ["Show password"]);
+      function reveal() { shownPw.hidden = false; showLink.hidden = true; }
+      showLink.addEventListener("click", reveal);
 
-      const copyBtn = el("button", { type: "button", class: "secondary" }, ["📋 Copy password"]);
+      const copyBtn = el("button", { type: "button", class: "primary wide" }, ["Copy password"]);
       copyBtn.addEventListener("click", async function () {
         try {
           await navigator.clipboard.writeText(w.password);
           copyBtn.textContent = "✓ Copied — paste into WiFi settings";
         } catch (e) {
-          // Clipboard API needs HTTPS + a user gesture; we have both, but if it
-          // fails, fall back to revealing so the guest isn't stuck.
-          revealPw();
+          reveal();
           copyBtn.textContent = "Couldn't copy — shown below";
         }
-        setTimeout(() => { copyBtn.textContent = "📋 Copy password"; }, 4000);
+        setTimeout(function () { copyBtn.textContent = "Copy password"; }, 4000);
       });
-      actions.appendChild(copyBtn);
-
-      const shownPw = el("code", { class: "pw", hidden: "hidden" }, [w.password]);
-      const showLink = el("button", { type: "button", class: "linklike" }, ["Show password"]);
-      function revealPw() {
-        shownPw.hidden = false;
-        showLink.hidden = true;
-      }
-      showLink.addEventListener("click", revealPw);
-      actions.appendChild(showLink);
-
-      nodes.push(actions);
+      nodes.push(copyBtn);
+      nodes.push(el("p", { class: "hint subtle" }, ["On a laptop, copy the password and paste it into your WiFi settings."]));
+      nodes.push(el("div", { class: "reveal-row" }, [showLink]));
       nodes.push(shownPw);
-      nodes.push(el("p", { class: "hint subtle" }, ["On a laptop? Copy the password, then paste it into your WiFi settings — no need to read it."]));
     }
 
-    if (w.notes) nodes.push(instr(w.notes));
-    return card("📶", "WiFi", null, nodes);
+    if (Array.isArray(w.steps) && w.steps.length) nodes.push(steps(w.steps));
+    return nodes;
   }
 
+  // Home Assistant modal body: steps + a big "Open dashboard" button + docs.
+  function haBody(ha) {
+    const nodes = [];
+    if (Array.isArray(ha.steps) && ha.steps.length) nodes.push(steps(ha.steps));
+    if (ha.url) {
+      nodes.push(el("a", {
+        class: "primary wide", href: ha.url, target: "_blank", rel: "noopener noreferrer",
+      }, ["Open lights dashboard ↗"]));
+    }
+    if (ha.login) {
+      nodes.push(el("dl", { class: "kv" }, [
+        el("dt", null, ["Login"]), el("dd", null, [el("code", null, [ha.login])]),
+      ]));
+    }
+    nodes.push(docsLink(ha.docs_url));
+    return nodes;
+  }
+
+  // --- Modal ---------------------------------------------------------------
+  const dialog = document.getElementById("modal");
+  const modalTitle = document.getElementById("modal-title");
+  const modalSub = document.getElementById("modal-sub");
+  const modalBody = document.getElementById("modal-body");
+  document.getElementById("modal-close").addEventListener("click", function () { dialog.close(); });
+  // Click on the backdrop (outside the inner panel) closes the modal.
+  dialog.addEventListener("click", function (e) {
+    if (e.target === dialog) dialog.close();
+  });
+
+  function openModal(section, data) {
+    modalTitle.textContent = section.title || section.label;
+    const sub = section.sub ? section.sub(data) : "";
+    modalSub.textContent = sub || "";
+    modalSub.hidden = !sub;
+    modalBody.innerHTML = "";
+    section.body(data).forEach(function (n) { if (n) modalBody.appendChild(n); });
+    dialog.showModal();
+  }
+
+  // --- Home grid of tiles --------------------------------------------------
   function render(g) {
     content.innerHTML = "";
-    const frag = document.createDocumentFragment();
+    content.appendChild(el("p", { class: "grid-hint" }, ["Tap anything to see how to use it."]));
+    const grid = el("div", { class: "grid" }, []);
 
-    if (g.wifi) {
-      frag.appendChild(wifiCard(g.wifi));
-    }
-    if (g.monitor) {
-      frag.appendChild(card("🖥️", "Dell Monitor", g.monitor.model, [instr(g.monitor.instructions)]));
-    }
-    if (g.desk) {
-      frag.appendChild(card("🪑", "Vivo Standing Desk", g.desk.model, [instr(g.desk.instructions)]));
-    }
-    if (g.keyboard_mouse) {
-      frag.appendChild(card("⌨️", "Keyboard & Mouse", g.keyboard_mouse.model, [instr(g.keyboard_mouse.instructions)]));
-    }
-    if (g.sonos) {
-      const room = g.sonos.room ? el("p", { class: "model" }, ["Room: " + g.sonos.room]) : "";
-      frag.appendChild(card("🔊", "Sonos Speakers", null, [room, instr(g.sonos.instructions)]));
-    }
-    if (g.home_assistant) {
-      const ha = g.home_assistant;
-      const rows = [
-        el("dt", null, ["URL"]),
-        el("dd", null, [ha.url ? el("a", { href: ha.url, target: "_blank", rel: "noopener" }, [ha.url]) : ""]),
-      ];
-      // Only show a Login row if one is configured (guest may use URL-only access).
-      if (ha.login) {
-        rows.push(el("dt", null, ["Login"]), el("dd", null, [el("code", null, [ha.login])]));
-      }
-      const kv = el("dl", { class: "kv" }, rows);
-      frag.appendChild(card("💡", "Lights (Home Assistant)", null, [kv, instr(ha.instructions)]));
-    }
+    SECTIONS.forEach(function (section) {
+      const data = g[section.key];
+      if (!data) return; // only show tiles we have content for
+      const tile = el("button", {
+        type: "button", class: "tile " + section.tint, "aria-haspopup": "dialog",
+      }, [
+        el("span", { class: "tile-icon", "aria-hidden": "true" }, [section.icon]),
+        el("span", { class: "tile-label" }, [section.label]),
+      ]);
+      tile.addEventListener("click", function () { openModal(section, data); });
+      grid.appendChild(tile);
+    });
 
-    content.appendChild(frag);
+    content.appendChild(grid);
     content.hidden = false;
     gate.hidden = true;
     window.scrollTo({ top: 0, behavior: "smooth" });
