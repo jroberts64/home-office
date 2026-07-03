@@ -155,6 +155,10 @@ Resources:
                   - apigateway:PATCH
                   - apigateway:PUT
                   - apigateway:DELETE
+                  # API Gateway V2 auto-tags resources (e.g. the stage) on
+                  # create; tagging uses dedicated actions, not the HTTP verbs.
+                  - apigateway:TagResource
+                  - apigateway:UntagResource
                 Resource: !Sub 'arn:aws:apigateway:${AWS::Region}::*'
               - Sid: Logs
                 Effect: Allow
