@@ -128,11 +128,14 @@ a { color: var(--accent); }
 .tile:active { transform: translateY(0); }
 
 .tile-icon {
-  font-size: 46px; line-height: 1;
+  font-size: 44px; line-height: 1;
   filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35));
+  white-space: nowrap;          /* keep multi-emoji icons (e.g. ⌨️🖱️) on one line */
 }
 .tile-label {
-  font-size: 17px; font-weight: 700; letter-spacing: -0.01em;
+  font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
+  text-align: center; line-height: 1.15;
+  max-width: 100%;
 }
 
 /* Per-function accent hues (set --tile; the ::before and states use it). */
