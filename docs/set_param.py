@@ -7,7 +7,8 @@ doesn't exist yet. Every other field is preserved.
 
 Values are stored as STRINGS by default — correct for SSIDs, passwords, URLs,
 and secrets, including all-digit ones (an all-digit SSID stored as a number
-breaks the site). Pass --typed to parse the value as JSON (number/bool/null).
+breaks the site). Pass --typed to parse the value as JSON (number, bool, null,
+array, or object) — needed for step lists.
 
 Usage:
     python3 set_param.py <dotted.key.path> <value> [--typed]
@@ -17,6 +18,7 @@ Examples:
     python3 set_param.py guest.wifi.ssid 6787564891          # stored as "6787564891"
     python3 set_param.py guest.wifi.password "hunter2"
     python3 set_param.py guest.home_assistant.url http://homeassistant.local:8123
+    python3 set_param.py guest.sonos.steps '["Step one.","Step two."]' --typed
     python3 set_param.py some.count 5 --typed                # stored as the number 5
 
 Auth: inherits your environment like the AWS CLI (AWS_PROFILE/AWS_REGION come
@@ -113,23 +115,21 @@ def load_config():
 
 
 def coerce(value):
-    """Parse the CLI arg into a JSON scalar. Only used with --typed.
+    """Parse the CLI arg as JSON. Only used with --typed.
 
-    NOT the default: every value this config holds (SSIDs, passwords, URLs,
-    secrets, instructions) is a string, and silently turning an all-digit SSID
-    or password into a JSON number breaks the site. Opt in with --typed only
-    when you genuinely want a number/bool/null.
+    Handles scalars AND arrays/objects, e.g. --typed '["a","b"]' stores a real
+    JSON array (needed for steps lists), and --typed 5 stores a number. If the
+    value isn't valid JSON, it's kept as a plain string.
+
+    NOT the default: every string value this config holds (SSIDs, passwords,
+    URLs, secrets, single instructions) must stay a string — silently turning an
+    all-digit SSID into a number breaks the site. Opt in with --typed only when
+    you genuinely want a number/bool/null/array/object.
     """
-    if value.lower() in ("true", "false"):
-        return value.lower() == "true"
-    if value.lower() in ("null", "none"):
-        return None
-    for cast in (int, float):
-        try:
-            return cast(value)
-        except ValueError:
-            pass
-    return value
+    try:
+        return json.loads(value)
+    except (ValueError, TypeError):
+        return value
 
 
 def set_path(config, dotted, value):
