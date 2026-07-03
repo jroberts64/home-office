@@ -43,3 +43,9 @@ jobs:
       - name: Build & deploy
         run: ./deploy/deploy.sh
         # AWS_PROFILE intentionally unset — the assumed role provides creds.
+        # Custom domain (repo variables). If unset, the stack serves on the
+        # default *.cloudfront.net URL. Keep these set so each deploy preserves
+        # the home-office.jack-roberts.com alias instead of removing it.
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          HOSTED_ZONE_ID: ${{ vars.HOSTED_ZONE_ID }}
