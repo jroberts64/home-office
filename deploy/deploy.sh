@@ -123,10 +123,14 @@ EOF
 
 # --- 5. Sync the site and invalidate the CDN -----------------------------
 echo "==> Syncing site to s3://$BUCKET..."
-# Static assets cache long; index.html and config.js always revalidate.
+# Filenames are NOT content-hashed (app.js stays "app.js" across deploys), so
+# nothing here may be immutable — a browser that cached an old app.js under the
+# same name would never fetch the new one, silently breaking after a deploy.
+# Everything is no-cache: the browser revalidates each load (a cheap 304 when
+# unchanged), and CloudFront still caches at the edge between origin and users.
 aws_ s3 sync site/ "s3://$BUCKET/" --delete \
-  --cache-control "public,max-age=31536000,immutable" \
-  --exclude "index.html" --exclude "config.js"
+  --cache-control "no-cache"
+# Ensure correct content types on the two files sync can mislabel.
 aws_ s3 cp site/index.html "s3://$BUCKET/index.html" \
   --cache-control "no-cache" --content-type "text/html"
 aws_ s3 cp site/config.js "s3://$BUCKET/config.js" \
