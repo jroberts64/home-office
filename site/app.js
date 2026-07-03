@@ -29,23 +29,34 @@
 
     btn.disabled = true;
     btn.textContent = "Checking…";
+    let data;
     try {
       const res = await fetch(API_BASE + "/unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pin }),
       });
-      const data = await res.json().catch(() => ({}));
+      data = await res.json().catch(() => ({}));
       if (!res.ok) {
         showError(data.error || "Something went wrong. Try again.");
         return;
       }
-      render(data.guest || {});
     } catch (err) {
+      // Only genuine fetch failures reach here (DNS, offline, CORS).
       showError("Couldn't reach the server. Are you on the WiFi?");
+      return;
     } finally {
       btn.disabled = false;
       btn.textContent = "Unlock";
+    }
+
+    // Render outside the network try so a display bug isn't mislabeled as a
+    // connection problem.
+    try {
+      render(data.guest || {});
+    } catch (err) {
+      showError("Unlocked, but something went wrong showing the guide. Tell Jack.");
+      if (window.console) console.error("render failed:", err);
     }
   });
 
@@ -57,9 +68,13 @@
       if (k === "class") node.className = attrs[k];
       else node.setAttribute(k, attrs[k]);
     }
-    (children || []).forEach((c) =>
-      node.appendChild(typeof c === "string" ? document.createTextNode(c) : c)
-    );
+    (children || []).forEach((c) => {
+      if (c == null || c === "") return;
+      // Coerce anything that isn't already a DOM node to text, so a value that
+      // arrives as a number/boolean (e.g. an all-digit SSID) renders instead of
+      // throwing inside appendChild and blanking the page.
+      node.appendChild(c instanceof Node ? c : document.createTextNode(String(c)));
+    });
     return node;
   }
 

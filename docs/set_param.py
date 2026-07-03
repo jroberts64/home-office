@@ -5,13 +5,19 @@ Reads the current SecureString parameter, sets one key (by dotted path),
 and writes the whole thing back — encrypted. Creates the parameter if it
 doesn't exist yet. Every other field is preserved.
 
+Values are stored as STRINGS by default — correct for SSIDs, passwords, URLs,
+and secrets, including all-digit ones (an all-digit SSID stored as a number
+breaks the site). Pass --typed to parse the value as JSON (number/bool/null).
+
 Usage:
-    python3 set_param.py <dotted.key.path> <value>
+    python3 set_param.py <dotted.key.path> <value> [--typed]
 
 Examples:
     python3 set_param.py totp_secret JBSWY3DPEHPK3PXP
+    python3 set_param.py guest.wifi.ssid 6787564891          # stored as "6787564891"
     python3 set_param.py guest.wifi.password "hunter2"
     python3 set_param.py guest.home_assistant.url http://homeassistant.local:8123
+    python3 set_param.py some.count 5 --typed                # stored as the number 5
 
 Auth: inherits your environment like the AWS CLI (AWS_PROFILE/AWS_REGION come
 from .env by default — see docs/_env.py). If the SSO token has expired, the
@@ -107,7 +113,13 @@ def load_config():
 
 
 def coerce(value):
-    """Turn the string CLI arg into a JSON scalar when it clearly is one."""
+    """Parse the CLI arg into a JSON scalar. Only used with --typed.
+
+    NOT the default: every value this config holds (SSIDs, passwords, URLs,
+    secrets, instructions) is a string, and silently turning an all-digit SSID
+    or password into a JSON number breaks the site. Opt in with --typed only
+    when you genuinely want a number/bool/null.
+    """
     if value.lower() in ("true", "false"):
         return value.lower() == "true"
     if value.lower() in ("null", "none"):
@@ -117,7 +129,7 @@ def coerce(value):
             return cast(value)
         except ValueError:
             pass
-    return value  # plain string (the common case: secrets, URLs, passwords)
+    return value
 
 
 def set_path(config, dotted, value):
@@ -141,12 +153,18 @@ def write_config(config):
 
 
 def main():
-    if len(sys.argv) != 3:
+    args = [a for a in sys.argv[1:] if a != "--typed"]
+    typed = "--typed" in sys.argv[1:]
+    if len(args) != 2:
         sys.exit(__doc__)
-    dotted, raw_value = sys.argv[1], sys.argv[2]
+    dotted, raw_value = args
+
+    # Store as a string by default (correct for SSIDs, passwords, URLs, secrets).
+    # --typed opts into JSON coercion (numbers/booleans/null).
+    value = coerce(raw_value) if typed else raw_value
 
     config, existed = load_config()
-    set_path(config, dotted, coerce(raw_value))
+    set_path(config, dotted, value)
     write_config(config)
 
     action = "Updated" if existed else "Created"
