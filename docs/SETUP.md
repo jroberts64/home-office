@@ -86,6 +86,23 @@ Print it, stick it on the desk. Guests scan it, type the rotating PIN, done.
 
 ## Rotating / updating secrets
 
-Just re-run the helper (or `put-parameter --overwrite`). The Lambda reads SSM on a cold
-start and caches per-container, so changes propagate within a few minutes — or redeploy
-the function to force it.
+To change **one field** without touching the rest of the config, use `set_param.py`.
+It reads the current parameter, sets one key by dotted path, and writes it back
+encrypted. It **creates** the parameter if it doesn't exist yet.
+
+```bash
+# Rotate the shared TOTP secret (keeps WiFi, HA creds, etc. intact):
+python3 docs/set_param.py totp_secret YOUR_BASE32_SECRET
+
+# Update a nested value:
+python3 docs/set_param.py guest.wifi.password "new-wifi-pass"
+```
+
+It inherits `AWS_PROFILE` / `AWS_REGION` from your environment like the AWS CLI.
+
+To rewrite the **whole** config interactively, re-run `make_parameter.py` instead.
+
+After any change: the Lambda reads SSM on a cold start and caches per-container, so
+changes propagate within a few minutes — or force it immediately by updating the
+function config (see the `update-function-configuration` note in the deploy docs).
+If you rotated the TOTP secret, also update Google Authenticator and `esp32/secrets.h`.
