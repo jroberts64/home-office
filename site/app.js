@@ -75,16 +75,71 @@
     return text ? el("p", null, [text]) : "";
   }
 
+  // WiFi card: connect without seeing the password.
+  //  - Phones: scan the QR (camera offers "Join network").
+  //  - Laptops: "Copy password" writes it to the clipboard without showing it.
+  //  - Optional "Show" reveals it as a last resort.
+  function wifiCard(w) {
+    const nodes = [];
+
+    const kv = el("dl", { class: "kv" }, [
+      el("dt", null, ["Network"]),
+      el("dd", null, [el("code", null, [w.ssid || ""])]),
+    ]);
+    nodes.push(kv);
+
+    // QR for phones.
+    if (w.qr) {
+      const img = el("img", {
+        class: "wifi-qr", src: w.qr, alt: "WiFi join QR code", width: "180", height: "180",
+      }, []);
+      nodes.push(el("p", { class: "hint" }, ["📷 Scan with your phone camera to join"]));
+      nodes.push(img);
+    }
+
+    // Copy button + optional reveal for laptops. Only if there is a password.
+    if (w.password) {
+      const actions = el("div", { class: "actions" }, []);
+
+      const copyBtn = el("button", { type: "button", class: "secondary" }, ["📋 Copy password"]);
+      copyBtn.addEventListener("click", async function () {
+        try {
+          await navigator.clipboard.writeText(w.password);
+          copyBtn.textContent = "✓ Copied — paste into WiFi settings";
+        } catch (e) {
+          // Clipboard API needs HTTPS + a user gesture; we have both, but if it
+          // fails, fall back to revealing so the guest isn't stuck.
+          revealPw();
+          copyBtn.textContent = "Couldn't copy — shown below";
+        }
+        setTimeout(() => { copyBtn.textContent = "📋 Copy password"; }, 4000);
+      });
+      actions.appendChild(copyBtn);
+
+      const shownPw = el("code", { class: "pw", hidden: "hidden" }, [w.password]);
+      const showLink = el("button", { type: "button", class: "linklike" }, ["Show password"]);
+      function revealPw() {
+        shownPw.hidden = false;
+        showLink.hidden = true;
+      }
+      showLink.addEventListener("click", revealPw);
+      actions.appendChild(showLink);
+
+      nodes.push(actions);
+      nodes.push(shownPw);
+      nodes.push(el("p", { class: "hint subtle" }, ["On a laptop? Copy the password, then paste it into your WiFi settings — no need to read it."]));
+    }
+
+    if (w.notes) nodes.push(instr(w.notes));
+    return card("📶", "WiFi", null, nodes);
+  }
+
   function render(g) {
     content.innerHTML = "";
     const frag = document.createDocumentFragment();
 
     if (g.wifi) {
-      const kv = el("dl", { class: "kv" }, [
-        el("dt", null, ["Network"]), el("dd", null, [el("code", null, [g.wifi.ssid || ""])]),
-        el("dt", null, ["Password"]), el("dd", null, [el("code", null, [g.wifi.password || ""])]),
-      ]);
-      frag.appendChild(card("📶", "WiFi", null, [kv, instr(g.wifi.notes)]));
+      frag.appendChild(wifiCard(g.wifi));
     }
     if (g.monitor) {
       frag.appendChild(card("🖥️", "Dell Monitor", g.monitor.model, [instr(g.monitor.instructions)]));

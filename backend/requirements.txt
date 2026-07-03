@@ -1,1 +1,3 @@
 pyotp==2.9.0
+# QR generation for the WiFi join code. SVG output uses no Pillow / binary deps.
+qrcode==7.4.2

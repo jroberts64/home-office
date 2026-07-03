@@ -103,4 +103,42 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 a { color: var(--accent); }
 
+/* WiFi card */
+.wifi-qr {
+  display: block;
+  width: 180px; height: 180px;
+  margin: 12px auto;
+  background: #fff;           /* white quiet-zone so cameras read it reliably */
+  padding: 10px;
+  border-radius: 12px;
+}
+.hint { text-align: center; color: var(--muted); margin: 10px 0 0; }
+.hint.subtle { font-size: 13px; }
+
+.actions {
+  display: flex; align-items: center; justify-content: center;
+  gap: 16px; flex-wrap: wrap; margin: 14px 0 4px;
+}
+/* Smaller, muted button for the copy action (distinct from the primary unlock). */
+button.secondary {
+  font-size: 15px;
+  padding: 10px 18px;
+  background: var(--card-2);
+  border: 1px solid rgba(255,255,255,0.14);
+}
+/* A button that looks like a text link (the "Show password" fallback). */
+button.linklike {
+  background: none; border: 0; padding: 0;
+  color: var(--accent); font-weight: 500; font-size: 14px;
+  text-decoration: underline; cursor: pointer;
+}
+.pw {
+  text-align: center;
+  font-family: ui-monospace, monospace; font-size: 18px;
+  background: var(--card-2); border-radius: 10px;
+  padding: 10px; margin: 8px 0; word-break: break-all;
+}
+/* Show as a block only when revealed; the [hidden] attribute must still win. */
+.pw:not([hidden]) { display: block; }
+
 footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 24px; }

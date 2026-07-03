@@ -10,13 +10,54 @@ Flow:
 The TOTP secret never leaves the server. The repo and static site contain no secrets.
 """
 
+import base64
+import io
 import json
 import os
 
 import boto3
 import pyotp
+import qrcode
+import qrcode.image.svg
 
 PARAMETER_NAME = os.environ.get("PARAMETER_NAME", "/home-office/config")
+
+
+def _wifi_qr_escape(value):
+    """Escape a value for the WIFI: QR payload (\\, ;, ,, :, and " are special)."""
+    out = []
+    for ch in str(value):
+        if ch in ("\\", ";", ",", ":", '"'):
+            out.append("\\" + ch)
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _wifi_qr_data_uri(ssid, password, auth="WPA"):
+    """Build a scannable WiFi-join QR as an SVG data URI.
+
+    Phones (iOS/Android camera) read the standard `WIFI:` payload and offer to
+    join the network — the guest never sees the password. SVG output uses no
+    Pillow / binary dependency, keeping the Lambda package light.
+    """
+    if not ssid:
+        return None
+    payload = (
+        f"WIFI:T:{auth};S:{_wifi_qr_escape(ssid)};"
+        f"P:{_wifi_qr_escape(password or '')};;"
+    )
+    qr = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=2,
+    )
+    qr.add_data(payload)
+    qr.make(fit=True)
+    buf = io.BytesIO()
+    qr.make_image(image_factory=qrcode.image.svg.SvgPathImage).save(buf)
+    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    return "data:image/svg+xml;base64," + b64
 
 # Reuse the SSM client across warm invocations.
 _ssm = boto3.client("ssm")
@@ -77,4 +118,15 @@ def handler(event, context):
 
     # PIN is valid — return only the guest-facing details, never the TOTP secret.
     guest = config.get("guest", {})
+
+    # Add a scannable WiFi-join QR so guests can connect without reading the
+    # password. (The password is still returned for the "copy password" button
+    # on laptops; the frontend never renders it as visible text.)
+    wifi = guest.get("wifi")
+    if isinstance(wifi, dict) and wifi.get("ssid"):
+        qr = _wifi_qr_data_uri(wifi.get("ssid"), wifi.get("password"),
+                               wifi.get("auth", "WPA"))
+        if qr:
+            wifi["qr"] = qr
+
     return _response(200, {"guest": guest})
