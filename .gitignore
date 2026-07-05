@@ -23,6 +23,9 @@ dist/
 # OS
 .DS_Store
 
-# ESP32 / PlatformIO
-esp32/.pio/
-esp32/secrets.h
+# ESP32 firmware (arduino-cli). Secrets live in esp32/.env (gitignored above) or
+# are provisioned over serial into the device's NVS — never in source.
+esp32/build/
+*.bin
+*.elf
+*.map

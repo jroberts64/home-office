@@ -66,7 +66,7 @@ the stack when `DomainName`/`HostedZoneId` are supplied (see Deploying).
 | `backend/app.py` | Python Lambda: public `_guide()` (no wifi) + PIN-gated `_unlock()` (wifi only, with QR). Also builds the WiFi-join QR (SVG, via `qrcode`, no Pillow). |
 | `deploy/` | Plain CloudFormation (`app.yaml`, `github-oidc.yaml`) + scripts. See "Deploying". |
 | `docs/` | `SETUP.md`, plus helpers: `make_parameter.py` (write full config interactively), `set_param.py` (upsert one field), `_env.py` (shared `.env` loader). |
-| `esp32/` | PlatformIO firmware for an optional desk gadget that displays the live PIN. |
+| `esp32/` | The desk PIN gadget — a working hardware TOTP token (Arduino / arduino-cli, from the `genesis-mini-kit` project). Shows the live rotating code so guests can read it and unlock WiFi. `firmware/genesis_totp/` is the sketch (multi-board via `board_config.h`); `tools/provision.py` writes Wi-Fi + secret into NVS over serial. Its `TOTP_SECRET` must match the SSM `totp_secret`. |
 
 ## Conventions
 
