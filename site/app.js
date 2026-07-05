@@ -94,12 +94,12 @@
       body: function (d) { return [steps(d.steps), docsLink(d.docs_url)]; },
     },
     {
-      key: "desk", icon: "🪑", label: "Desk", tint: "t-desk",
+      key: "desk", icon: "🪑", label: "Standing Desk", tint: "t-desk",
       title: "Standing Desk", sub: function (d) { return d.model; },
       body: function (d) { return [steps(d.steps), docsLink(d.docs_url)]; },
     },
     {
-      key: "keyboard_mouse", icon: "⌨️🖱️", label: "Keyboard/Mouse", tint: "t-kbd",
+      key: "keyboard_mouse", icon: "⌨️🖱️", label: "Keyboard / Mouse", tint: "t-kbd",
       title: "Keyboard & Mouse", sub: function (d) { return d.model; },
       body: function (d) { return [steps(d.steps), docsLink(d.docs_url)]; },
     },
